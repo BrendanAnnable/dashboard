@@ -74,22 +74,27 @@ class WebSocketServerClient {
 
   private onListen = () => {
     this.udpServer.addMembership(this.teamAAddress);
-    const address_a = this.udpServer.address();
-    console.log(
-      `UDP server listening on ${address_a.address}:${address_a.port}`,
-    );
+    const address = this.udpServer.address();
+    console.log(`UDP server listening on ${this.teamAAddress}:${address.port}`);
     this.udpServer.addMembership(this.teamBAddress);
-    const address_b = this.udpServer.address();
-    console.log(
-      `UDP server listening on ${address_b.address}:${address_b.port}`,
-    );
+    console.log(`UDP server listening on ${this.teamBAddress}:${address.port}`);
   };
 
   private onMessage = (msg: string, rinfo: dgram.RemoteInfo) => {
     console.log(
-      `Receiver message from ${rinfo.family}:${rinfo.address}:${rinfo.port}`,
+      `Received message from ${rinfo.family}:${rinfo.address}:${rinfo.port}`,
     );
-    this.socket.volatileSend(msg, rinfo);
+    this.socket.send(
+      'udp_packet',
+      JSON.stringify({
+        payload: msg,
+        rinfo: {
+          family: rinfo.family,
+          address: rinfo.address,
+          port: rinfo.port,
+        },
+      }),
+    );
   };
 
   private onClose = () => {
