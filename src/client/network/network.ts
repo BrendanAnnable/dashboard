@@ -5,7 +5,7 @@ export class WebSocketProxyUDPClient {
     this.socket.on('connect', this.onConnect);
     this.socket.on('reconnect_attempt', this.onReconnect);
     this.socket.on('disconnect', this.onDisconnect);
-    this.socket.on('udp-packet', this.onPacket);
+    this.socket.on('udp_packet', this.onPacket);
   }
 
   static of() {
