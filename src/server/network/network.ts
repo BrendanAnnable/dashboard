@@ -13,8 +13,8 @@ type Opts = {
 };
 
 /**
- * The server component of a NUClearNet proxy running over web sockets. Acts as a gateway to the NUClear network.
- * All clients currently share a single NUClearNet connection, mostly for performance reasons. Could potentially be
+ * The server component of a UDP proxy running over web sockets. Acts as a gateway to the UDP network.
+ * All clients currently share a single UDP connection, mostly for performance reasons. Could potentially be
  * improved to have more intelligent multiplexing.
  */
 export class WebSocketProxyUDPServer {
