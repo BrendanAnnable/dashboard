@@ -2,15 +2,31 @@ import compression from 'compression';
 import history from 'connect-history-api-fallback';
 import express from 'express';
 import http from 'http';
+import minimist from 'minimist';
 import favicon from 'serve-favicon';
+import sio from 'socket.io';
 import webpack from 'webpack';
 import webpackDevMiddleware from 'webpack-dev-middleware';
 
 import webpackConfig from '../../webpack.config';
 
+import { WebSocketProxyUDPServer } from './network/network';
+import { WebSocketServer } from './network/web_socket_server';
+
+const args = minimist(process.argv.slice(2));
+const teamAAddress = args.team_a || '239.226.152.162';
+const teamBAddress = args.team_b || '239.226.152.163';
+
 const compiler = webpack(webpackConfig);
 const app = express();
 const server = http.createServer(app);
+const sioNetwork = sio(server);
+
+// Initialize socket.io namespace immediately to catch reconnections.
+WebSocketProxyUDPServer.of(WebSocketServer.of(sioNetwork.of('/dashboard')), {
+  teamAAddress,
+  teamBAddress,
+});
 
 const devMiddleware = webpackDevMiddleware(compiler, {
   publicPath: '/',
