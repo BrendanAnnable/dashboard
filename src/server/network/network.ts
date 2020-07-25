@@ -140,7 +140,7 @@ class PacketProcessor {
     if (this.outgoingPackets < this.outgoingLimit) {
       const next = this.queue.pop();
       if (next) {
-        const { event, packet } = next;
+        const { packet, rinfo } = next;
         let isDone = false;
         const done = () => {
           if (!isDone) {
@@ -150,7 +150,7 @@ class PacketProcessor {
           }
         };
         this.outgoingPackets++;
-        this.socket.volatileSend(event, packet, done);
+        this.socket.volatileSend(packet, rinfo, done);
         this.clock.setTimeout(done, this.timeout);
       }
     }
