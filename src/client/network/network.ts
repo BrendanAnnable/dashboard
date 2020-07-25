@@ -22,6 +22,11 @@ export class WebSocketProxyUDPClient {
     this.socket.connect();
   }
 
+  // Allow event handlers to be overridden (used for testing)
+  setHandler(event: string, cb: (msg: string) => void) {
+    this.socket.on(event, cb);
+  }
+
   private onConnect = () => {};
   private onReconnect = () => {
     this.socket.io.opts.transports = ['polling', 'websocket'];
