@@ -116,7 +116,7 @@
   },
   "husky": {
     "hooks": {
-      "pre-push": "yarn tslint"
+      "pre-push": "yarn eslint"
     }
   }
 }
