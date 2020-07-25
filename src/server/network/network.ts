@@ -1,9 +1,5 @@
 import dgram = require('dgram');
 
-import { Clock } from '../../shared/time/clock';
-import { NodeSystemClock } from '../time/node_clock';
-
-import { LruPriorityQueue } from './lru_priority_queue';
 import { WebSocketServer } from './web_socket_server';
 import { WebSocket } from './web_socket_server';
 
@@ -47,7 +43,6 @@ class WebSocketServerClient {
 
   constructor(
     private socket: WebSocket,
-    private processor: PacketProcessor,
     private teamAAddress: string,
     private teamBAddress: string,
   ) {
@@ -68,12 +63,7 @@ class WebSocketServerClient {
   }
 
   static of(socket: WebSocket, teamAAddress: string, teamBAddress: string) {
-    return new WebSocketServerClient(
-      socket,
-      PacketProcessor.of(socket),
-      teamAAddress,
-      teamBAddress,
-    );
+    return new WebSocketServerClient(socket, teamAAddress, teamBAddress);
   }
 
   private onError = (error: Error) => {
@@ -99,7 +89,7 @@ class WebSocketServerClient {
     console.log(
       `Receiver message from ${rinfo.family}:${rinfo.address}:${rinfo.port}`,
     );
-    this.processor.onPacket(msg, rinfo);
+    this.socket.volatileSend(msg, rinfo);
   };
 
   private onClose = () => {
@@ -107,64 +97,4 @@ class WebSocketServerClient {
     this.udpServer.dropMembership(this.teamAAddress);
     this.udpServer.dropMembership(this.teamBAddress);
   };
-}
-
-class PacketProcessor {
-  private outgoingPackets: number = 0;
-
-  // The maximum number of packets to send before receiving acknowledgements.
-  private outgoingLimit: number;
-
-  // The number of seconds before giving up on an acknowledge
-  private timeout: number;
-
-  constructor(
-    private socket: WebSocket,
-    private clock: Clock,
-    private queue: LruPriorityQueue<
-      string,
-      { packet: string; rinfo: dgram.RemoteInfo }
-    >,
-    { outgoingLimit, timeout }: { outgoingLimit: number; timeout: number },
-  ) {
-    this.outgoingLimit = outgoingLimit;
-    this.timeout = timeout;
-    this.queue = queue;
-  }
-
-  static of(socket: WebSocket) {
-    return new PacketProcessor(
-      socket,
-      NodeSystemClock,
-      new LruPriorityQueue({ capacityPerKey: 2 }),
-      { outgoingLimit: 10, timeout: 5 },
-    );
-  }
-
-  onPacket(packet: string, rinfo: dgram.RemoteInfo) {
-    // Throttle unreliable packets so that we do not overwhelm the client with traffic.
-    const key = `${rinfo.family}:${rinfo.address}:${rinfo.port}`;
-    this.queue.add(key, { packet, rinfo });
-    this.maybeSendNextPacket();
-  }
-
-  private maybeSendNextPacket() {
-    if (this.outgoingPackets < this.outgoingLimit) {
-      const next = this.queue.pop();
-      if (next) {
-        const { packet, rinfo } = next;
-        let isDone = false;
-        const done = () => {
-          if (!isDone) {
-            this.outgoingPackets--;
-            isDone = true;
-            this.maybeSendNextPacket();
-          }
-        };
-        this.outgoingPackets++;
-        this.socket.volatileSend(packet, rinfo, done);
-        this.clock.setTimeout(done, this.timeout);
-      }
-    }
-  }
 }
