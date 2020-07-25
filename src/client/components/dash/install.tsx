@@ -7,7 +7,7 @@ import { Robots as RobotsImpl } from './robots/view';
 import { Dashboard } from './view';
 
 export function installDash(): {
-  Dashboard: React.ComponentType
+  Dashboard: React.ComponentType;
 } {
   const model = DashboardModel.of([
     DashboardRobotModel.of(),
@@ -22,9 +22,9 @@ export function installDash(): {
   model.robots[1].color = '#4930bb';
   model.robots[2].position = new Vector3(3, -2, Math.PI / 4);
   model.robots[2].playerId = 3;
-  const Field = () => <FieldImpl model={model.field}/>;
-  const Robots = () => <RobotsImpl model={model}/>;
+  const Field = () => <FieldImpl model={model.field} />;
+  const Robots = () => <RobotsImpl model={model} />;
   return {
-    Dashboard: () => <Dashboard Field={Field} Robots={Robots} model={model}/>,
+    Dashboard: () => <Dashboard Field={Field} Robots={Robots} model={model} />,
   };
-};
+}
