@@ -77,21 +77,33 @@ class WebSocketServerClient {
   }
 
   private onError = (error: Error) => {
-    console.log('UDO server error:\n' + error.stack);
+    console.log(`UDP server error:\n${error.stack}`);
     this.udpServer.close();
     this.connected = false;
   };
 
   private onListen = () => {
     this.udpServer.addMembership(this.teamAAddress);
+    const address_a = this.udpServer.address();
+    console.log(
+      `UDP server listening on ${address_a.address}:${address_a.port}`,
+    );
     this.udpServer.addMembership(this.teamBAddress);
+    const address_b = this.udpServer.address();
+    console.log(
+      `UDP server listening on ${address_b.address}:${address_b.port}`,
+    );
   };
 
   private onMessage = (msg: string, rinfo: dgram.RemoteInfo) => {
+    console.log(
+      `Receiver message from ${rinfo.family}:${rinfo.address}:${rinfo.port}`,
+    );
     this.processor.onPacket(msg, rinfo);
   };
 
   private onClose = () => {
+    console.log('Closing UDP server');
     this.udpServer.dropMembership(this.teamAAddress);
     this.udpServer.dropMembership(this.teamBAddress);
   };
