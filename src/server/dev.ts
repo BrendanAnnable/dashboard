@@ -10,22 +10,35 @@ import webpackDevMiddleware from 'webpack-dev-middleware';
 
 import webpackConfig from '../../webpack.config';
 
-import { WebSocketProxyUDPServer } from './network/network';
-import { WebSocketServer } from './network/web_socket_server';
+import { UDPServer } from './network/network';
 
 const args = minimist(process.argv.slice(2));
-const teamAAddress = args.team_a || '239.226.152.162';
-const teamBAddress = args.team_b || '239.226.152.163';
+const redTeamAddress = args.team_a || '239.226.152.162';
+const blueTeamAddress = args.team_b || '239.226.152.163';
 
 const compiler = webpack(webpackConfig);
 const app = express();
 const server = http.createServer(app);
 const sioNetwork = sio(server);
 
-// Initialize socket.io namespace immediately to catch reconnections.
-WebSocketProxyUDPServer.of(WebSocketServer.of(sioNetwork.of('/dashboard')), {
-  teamAAddress,
-  teamBAddress,
+// Start listening to the multicast groups
+const udpServer = UDPServer.of(redTeamAddress, blueTeamAddress);
+
+// Whenever we get a new client connection let the UDP server know about it
+sioNetwork.on('connection', (socket: sio.Socket) => {
+  const off_cb = udpServer.on(
+    socket.client.id,
+    (event: string, ...args: any[]) => {
+      socket.emit(event, ...args);
+    },
+  );
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  socket.on('disconnect', (reason: string) => {
+    console.log('Disconnected from a client');
+    off_cb();
+  });
+
+  console.log('Connected to a new client');
 });
 
 const devMiddleware = webpackDevMiddleware(compiler, {
