@@ -33,7 +33,10 @@ teams.forEach((team: string) => {
 const compiler = webpack(webpackConfig);
 const app = express();
 const server = http.createServer(app);
-const sioNetwork = sio(server);
+const sioNetwork = sio(server, {
+  allowUpgrades: false,
+  transports: ['websocket'],
+});
 
 // Start listening to the multicast groups
 const udpServer = UDPServer.of(teamData);
