@@ -1,5 +1,6 @@
 import dgram = require('dgram');
 import dns = require('dns');
+import ip6addr from 'ip6addr';
 
 export type ClientListener = (event: string, ...args: any[]) => void;
 export type MessageCallback = (
@@ -27,42 +28,27 @@ export class UDPServers {
       // If the specified address can be resolved to an IPv4 address prefer that over an IPv6 address
       dns.lookup(
         team.address,
-        { family: 0, all: true },
+        { family: 0, all: true, hints: dns.ADDRCONFIG | dns.V4MAPPED },
         (
           error: NodeJS.ErrnoException | null,
           addresses: dns.LookupAddress[],
         ) => {
-          // Find the first IPv4 and IPv6 addresses that were returned
-          let ipv4 = '';
-          let ipv6 = '';
-          addresses.forEach((address: dns.LookupAddress) => {
-            if (address.family === 6 && ipv6 === '') {
-              ipv6 = address.address;
-            }
-            if (address.family === 4 && ipv4 === '') {
-              ipv4 = address.address;
-            }
-          });
+          // Filter returned addresses into either IPv4 or IPv6
+          const ipv4 = addresses.filter(v => v.family === 4);
+          const ipv6 = addresses.filter(v => v.family === 6);
 
           // Prefer IPv4 addresses
-          if (ipv4 !== '') {
+          if (ipv4.length > 0 || ipv6.length > 0) {
             this.servers.push(
               UDPServer.of(
-                { name: team.name, address: ipv4, port: team.port },
+                {
+                  name: team.name,
+                  address: ipv4.length > 0 ? ipv4[0].address : ipv6[0].address,
+                  port: team.port,
+                },
                 (team: TeamData, payload: Buffer, rinfo: dgram.RemoteInfo) => {
                   this.onMessage(team, payload, rinfo);
                 },
-                false,
-              ),
-            );
-          } else if (ipv6 !== '') {
-            this.servers.push(
-              UDPServer.of(
-                { name: team.name, address: ipv6, port: team.port },
-                (team: TeamData, payload: Buffer, rinfo: dgram.RemoteInfo) => {
-                  this.onMessage(team, payload, rinfo);
-                },
-                true,
               ),
             );
           } else {
@@ -94,11 +80,7 @@ export class UDPServers {
   }
 
   // One of the UDP servers received a new message, send it on to all clients
-  private onMessage = (
-    team: TeamData,
-    packet: Buffer,
-    rinfo: dgram.RemoteInfo,
-  ) => {
+  private onMessage(team: TeamData, packet: Buffer, rinfo: dgram.RemoteInfo) {
     for (let emit_cb of this.clients.values()) {
       emit_cb('udp_packet', {
         payload: packet,
@@ -114,38 +96,25 @@ export class UDPServers {
         },
       });
     }
-  };
+  }
 }
 
 class UDPServer {
   private socket: dgram.Socket;
 
-  constructor(
-    private team: TeamData,
-    private msg_cb: MessageCallback,
-    ipv6: boolean,
-  ) {
-    if (ipv6) {
-      this.socket = dgram.createSocket({ type: 'udp6', reuseAddr: true });
-    } else {
-      this.socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
-    }
+  constructor(private team: TeamData, private msg_cb: MessageCallback) {
+    this.socket = dgram.createSocket({
+      type: ip6addr.parse(team.address).kind() === 'ipv6' ? 'udp6' : 'udp4',
+      reuseAddr: true,
+    });
 
     this.socket.on('listening', () => {
       // Add multicast membership if we are using a multicast address
-      if (ipv6) {
-        // IPv6 multicast addresses start with 0xFF00
-        if (team.address.split(':')[0].toUpperCase() === 'FF00') {
-          this.socket.addMembership(team.address);
-        }
-      } else {
-        // IPv4 multicast addresses start with 0xE
-        const octet = Number(team.address.split('.')[0])
-          .toString(16)
-          .toUpperCase();
-        if (octet.startsWith('E')) {
-          this.socket.addMembership(team.address);
-        }
+      if (
+        ip6addr.createCIDR('224.0.0.0/4').contains(team.address) ||
+        ip6addr.createCIDR('ff00::/8').contains(team.address)
+      ) {
+        this.socket.addMembership(team.address);
       }
       const address = this.socket.address();
       console.log(
@@ -172,7 +141,7 @@ class UDPServer {
     this.socket.bind({ port: team.port, address: team.address });
   }
 
-  static of(team: TeamData, msg_cb: MessageCallback, ipv6: boolean) {
-    return new UDPServer(team, msg_cb, ipv6);
+  static of(team: TeamData, msg_cb: MessageCallback) {
+    return new UDPServer(team, msg_cb);
   }
 }
