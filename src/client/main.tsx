@@ -15,7 +15,6 @@ sioNetwork.on('connect', () => {
 });
 sioNetwork.on('reconnect_attempt', () => {
   console.log('Client reconnecting to server');
-  sioNetwork.io.opts.transports = ['polling', 'websocket'];
 });
 sioNetwork.on('disconnect', () => {
   console.log('Client disconnected from server');
