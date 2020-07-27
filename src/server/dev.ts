@@ -10,7 +10,7 @@ import webpackDevMiddleware from 'webpack-dev-middleware';
 
 import webpackConfig from '../../webpack.config';
 
-import { UDPServer } from './network/network';
+import { UDPServers } from './network/network';
 import { TeamData } from './network/network';
 
 // Process command line arguments
@@ -43,7 +43,7 @@ const sioNetwork = sio(server, {
 });
 
 // Start listening to the multicast groups
-const udpServer = UDPServer.of(teamData);
+const udpServer = UDPServers.of(teamData);
 
 // Whenever we get a new client connection let the UDP server know about it
 sioNetwork.on('connection', (socket: sio.Socket) => {

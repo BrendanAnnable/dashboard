@@ -2,6 +2,11 @@ import dgram = require('dgram');
 import dns = require('dns');
 
 export type ClientListener = (event: string, ...args: any[]) => void;
+export type MessageCallback = (
+  team: TeamData,
+  payload: Buffer,
+  rinfo: dgram.RemoteInfo,
+) => void;
 
 export type TeamData = {
   name: string;
@@ -9,57 +14,60 @@ export type TeamData = {
   port: number;
 };
 
-type Listener = {
-  server: dgram.Socket;
-  ipv6: boolean;
-  team: TeamData;
-};
-
-export class UDPServer {
-  private listeners: Array<Listener>;
+export class UDPServers {
+  private servers: Array<UDPServer>;
   private clients: Map<string, ClientListener>;
 
   constructor(teams: Array<TeamData>) {
     this.clients = new Map<string, ClientListener>();
-    this.listeners = new Array<Listener>();
+    this.servers = new Array<UDPServer>();
 
     teams.forEach((team: TeamData) => {
-      // Determine if we are listening on a IPv4 or IPv6 address and resolve any DNS names
+      // Determine if we are listening on a IPv4 or IPv6 address and resolve any DNS address
+      // If the specified address can be resolved to an IPv4 address prefer that over an IPv6 address
       dns.lookup(
         team.address,
-        { family: 0, all: false },
+        { family: 0, all: true },
         (
           error: NodeJS.ErrnoException | null,
-          address: string,
-          family: number,
+          addresses: dns.LookupAddress[],
         ) => {
-          if (family === 6) {
-            const listener = {
-              server: dgram.createSocket({ type: 'udp6', reuseAddr: true }),
-              ipv6: true,
-              team: {
-                name: team.name,
-                address: address,
-                port: team.port,
-              },
-            };
-            this.initialiseListener(listener);
-            this.listeners.push(listener);
-          } else if (family === 4) {
-            const listener = {
-              server: dgram.createSocket({ type: 'udp4', reuseAddr: true }),
-              ipv6: false,
-              team: {
-                name: team.name,
-                address: address,
-                port: team.port,
-              },
-            };
-            this.initialiseListener(listener);
-            this.listeners.push(listener);
+          // Find the first IPv4 and IPv6 addresses that were returned
+          let ipv4 = '';
+          let ipv6 = '';
+          addresses.forEach((address: dns.LookupAddress) => {
+            if (address.family === 6 && ipv6 === '') {
+              ipv6 = address.address;
+            }
+            if (address.family === 4 && ipv4 === '') {
+              ipv4 = address.address;
+            }
+          });
+
+          // Prefer IPv4 addresses
+          if (ipv4 !== '') {
+            this.servers.push(
+              UDPServer.of(
+                { name: team.name, address: ipv4, port: team.port },
+                (team: TeamData, payload: Buffer, rinfo: dgram.RemoteInfo) => {
+                  this.onMessage(team, payload, rinfo);
+                },
+                false,
+              ),
+            );
+          } else if (ipv6 !== '') {
+            this.servers.push(
+              UDPServer.of(
+                { name: team.name, address: ipv6, port: team.port },
+                (team: TeamData, payload: Buffer, rinfo: dgram.RemoteInfo) => {
+                  this.onMessage(team, payload, rinfo);
+                },
+                true,
+              ),
+            );
           } else {
             console.log(
-              `UDPServer encountered an error resolving a DNS address: Error:\n${error?.stack}`,
+              `UDPServer encountered an error resolving a DNS address: Error: ${error?.code}\n${error?.stack}`,
             );
           }
         },
@@ -68,7 +76,7 @@ export class UDPServer {
   }
 
   static of(teams: Array<TeamData>) {
-    return new UDPServer(teams);
+    return new UDPServers(teams);
   }
 
   // Add a new client to our list of clients
@@ -85,56 +93,86 @@ export class UDPServer {
     return () => this.clients.delete(client);
   }
 
-  // Set up callbacks for a given team and then bind the team to its multicast address and port
-  private initialiseListener = (listener: Listener) => {
-    listener.server.on('listening', () => {
+  // One of the UDP servers received a new message, send it on to all clients
+  private onMessage = (
+    team: TeamData,
+    packet: Buffer,
+    rinfo: dgram.RemoteInfo,
+  ) => {
+    for (let emit_cb of this.clients.values()) {
+      emit_cb('udp_packet', {
+        payload: packet,
+        team: {
+          name: team.name,
+          address: team.address,
+          port: team.port,
+        },
+        rinfo: {
+          family: rinfo.family,
+          address: rinfo.address,
+          port: rinfo.port,
+        },
+      });
+    }
+  };
+}
+
+class UDPServer {
+  private socket: dgram.Socket;
+
+  constructor(
+    private team: TeamData,
+    private msg_cb: MessageCallback,
+    ipv6: boolean,
+  ) {
+    if (ipv6) {
+      this.socket = dgram.createSocket({ type: 'udp6', reuseAddr: true });
+    } else {
+      this.socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+    }
+
+    this.socket.on('listening', () => {
       // Add multicast membership if we are using a multicast address
-      if (listener.ipv6) {
+      if (ipv6) {
         // IPv6 multicast addresses start with 0xFF00
-        if (listener.team.address.split(':')[0].toUpperCase() === 'FF00') {
-          listener.server.addMembership(listener.team.address);
+        if (team.address.split(':')[0].toUpperCase() === 'FF00') {
+          this.socket.addMembership(team.address);
         }
       } else {
         // IPv4 multicast addresses start with 0xE
-        const octet = Number(listener.team.address.split('.')[0])
+        const octet = Number(team.address.split('.')[0])
           .toString(16)
           .toUpperCase();
         if (octet.startsWith('E')) {
-          listener.server.addMembership(listener.team.address);
+          this.socket.addMembership(team.address);
         }
       }
-      const address = listener.server.address();
+      const address = this.socket.address();
       console.log(
-        `${listener.team.name} UDP Server: Listening on ${address.address}:${address.port}`,
+        `${team.name} UDP Server: Listening on ${address.address}:${address.port}`,
       );
     });
-    listener.server.on('error', (error: Error) => {
-      console.log(`${listener.team.name} UDP Server: Error:\n${error.stack}`);
-      listener.server.close();
+
+    this.socket.on('error', (error: Error) => {
+      console.log(`${team.name} UDP Server: Error:\n${error.stack}`);
+      this.socket.close();
     });
-    listener.server.on('message', (packet: Buffer, rinfo: dgram.RemoteInfo) => {
+
+    this.socket.on('message', (packet: Buffer, rinfo: dgram.RemoteInfo) => {
       console.log(
-        `${listener.team.name} UDP Server: Received a message from ${rinfo.family}:${rinfo.address}:${rinfo.port}`,
+        `${team.name} UDP Server: Received a message from ${rinfo.family}:${rinfo.address}:${rinfo.port}`,
       );
-      this.clients.forEach((emit_cb: ClientListener) => {
-        emit_cb('udp_packet', {
-          payload: packet,
-          team: {
-            name: listener.team.name,
-            address: listener.team.address,
-            port: listener.team.port,
-          },
-          rinfo: {
-            family: rinfo.family,
-            address: rinfo.address,
-            port: rinfo.port,
-          },
-        });
-      });
+      this.msg_cb(this.team, packet, rinfo);
     });
-    listener.server.on('close', () => {
+
+    this.socket.on('close', () => {
       console.log('${team.name} UDP Server: Closed');
     });
-    listener.server.bind({ port: 9917, address: listener.team.address });
-  };
+
+    this.socket.bind({ port: team.port, address: team.address });
+  }
+
+  static of(team: TeamData, msg_cb: MessageCallback, ipv6: boolean) {
+    return new UDPServer(team, msg_cb, ipv6);
+  }
 }
