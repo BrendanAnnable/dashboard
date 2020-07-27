@@ -2,24 +2,36 @@ import dgram = require('dgram');
 
 export type ClientListener = (event: string, ...args: any[]) => void;
 
+type TeamData = {
+  server: dgram.Socket;
+  name: string;
+  address: string;
+  port: number;
+};
+
 export class UDPServer {
-  private udpServer: dgram.Socket;
+  private redTeam: TeamData;
+  private blueTeam: TeamData;
   private clients: Map<string, ClientListener>;
 
-  constructor(private redTeamAddress: string, private blueTeamAddress: string) {
+  constructor(redTeamAddress: string, blueTeamAddress: string) {
     this.clients = new Map();
-    this.redTeamAddress = redTeamAddress;
-    this.blueTeamAddress = blueTeamAddress;
 
-    // Create a UDP4 socket. Reuse the address in the event another process is already using it
-    this.udpServer = dgram.createSocket({ type: 'udp4', reuseAddr: true });
-    this.udpServer.on('error', this.onError);
-    this.udpServer.on('listening', this.onListen);
-    this.udpServer.on('message', this.onMessage);
-    this.udpServer.on('close', this.onClose);
+    this.redTeam = {
+      server: dgram.createSocket({ type: 'udp4', reuseAddr: true }),
+      name: 'Red Team',
+      address: redTeamAddress,
+      port: 9917,
+    };
+    this.blueTeam = {
+      server: dgram.createSocket({ type: 'udp4', reuseAddr: true }),
+      name: 'Blue Team',
+      address: blueTeamAddress,
+      port: 9917,
+    };
 
-    // Bind to a random port and listen on all addresses
-    this.udpServer.bind(59790);
+    this.initTeam(this.redTeam);
+    this.initTeam(this.blueTeam);
   }
 
   static of(redTeamAddress: string, blueTeamAddress: string) {
@@ -40,52 +52,42 @@ export class UDPServer {
     return () => this.clients.delete(client);
   }
 
-  clientsCount() {
-    return this.clients.keys.length;
-  }
-
-  private onError = (error: Error) => {
-    console.log(`UDP server error:\n${error.stack}`);
-    this.udpServer.close();
-  };
-
-  private onListen = () => {
-    // Make sure we are listening to the red team
-    this.udpServer.addMembership(this.redTeamAddress);
-    const address = this.udpServer.address();
-    console.log(
-      `UDP server listening on ${this.redTeamAddress}:${address.port}`,
-    );
-
-    // Make sure we are listening to the blue team
-    this.udpServer.addMembership(this.blueTeamAddress);
-    console.log(
-      `UDP server listening on ${this.blueTeamAddress}:${address.port}`,
-    );
-  };
-
-  // We have a new message from one of the teams. Send it on to all clients
-  private onMessage = (msg: string, rinfo: dgram.RemoteInfo) => {
-    console.log(
-      `Received message from ${rinfo.family}:${rinfo.address}:${rinfo.port}`,
-    );
-    for (let emit_cb of this.clients.values()) {
-      emit_cb('udp_packet', {
-        payload: msg,
-        rinfo: {
-          family: rinfo.family,
-          address: rinfo.address,
-          port: rinfo.port,
-        },
-      });
-    }
-  };
-
-  // Time to close up shop
-  private onClose = () => {
-    console.log('Closing UDP server');
-    this.udpServer.dropMembership(this.redTeamAddress);
-    this.udpServer.dropMembership(this.blueTeamAddress);
-    this.clients.clear();
+  // Set up callbacks for a given team and then bind the team to its multicast address and port
+  private initTeam = (team: TeamData) => {
+    team.server.on('listening', () => {
+      team.server.addMembership(team.address);
+      const address = team.server.address();
+      console.log(
+        `${team.name} UDP Server: Listening on ${address.address}:${address.port}`,
+      );
+    });
+    team.server.on('error', (error: Error) => {
+      console.log(`${team.name} UDP Server: Error:\n${error.stack}`);
+      team.server.close();
+    });
+    team.server.on('message', (packet: Buffer, rinfo: dgram.RemoteInfo) => {
+      console.log(
+        `${team.name} UDP Server: Received a message from ${rinfo.family}:${rinfo.address}:${rinfo.port}`,
+      );
+      for (let emit_cb of this.clients.values()) {
+        emit_cb('udp_packet', {
+          payload: packet,
+          team: {
+            name: team.name,
+            address: team.address,
+            port: team.port,
+          },
+          rinfo: {
+            family: rinfo.family,
+            address: rinfo.address,
+            port: rinfo.port,
+          },
+        });
+      }
+    });
+    team.server.on('close', () => {
+      console.log('${team.name} UDP Server: Closed');
+    });
+    team.server.bind({ port: 9917, address: team.address });
   };
 }
