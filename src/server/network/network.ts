@@ -2,40 +2,39 @@ import dgram = require('dgram');
 
 export type ClientListener = (event: string, ...args: any[]) => void;
 
-type TeamData = {
-  server: dgram.Socket;
+export type TeamData = {
   name: string;
   address: string;
   port: number;
 };
 
+type Listener = {
+  server: dgram.Socket;
+  team: TeamData;
+};
+
 export class UDPServer {
-  private redTeam: TeamData;
-  private blueTeam: TeamData;
+  private listeners: Array<Listener>;
   private clients: Map<string, ClientListener>;
 
-  constructor(redTeamAddress: string, blueTeamAddress: string) {
-    this.clients = new Map();
+  constructor(teams: Array<TeamData>) {
+    this.clients = new Map<string, ClientListener>();
+    this.listeners = new Array<Listener>();
 
-    this.redTeam = {
-      server: dgram.createSocket({ type: 'udp4', reuseAddr: true }),
-      name: 'Red Team',
-      address: redTeamAddress,
-      port: 9917,
-    };
-    this.blueTeam = {
-      server: dgram.createSocket({ type: 'udp4', reuseAddr: true }),
-      name: 'Blue Team',
-      address: blueTeamAddress,
-      port: 9917,
-    };
+    teams.forEach((team: TeamData) => {
+      this.listeners.push({
+        server: dgram.createSocket({ type: 'udp4', reuseAddr: true }),
+        team: team,
+      });
+    });
 
-    this.initTeam(this.redTeam);
-    this.initTeam(this.blueTeam);
+    this.listeners.forEach((listener: Listener) => {
+      this.initialiseListener(listener);
+    });
   }
 
-  static of(redTeamAddress: string, blueTeamAddress: string) {
-    return new UDPServer(redTeamAddress, blueTeamAddress);
+  static of(teams: Array<TeamData>) {
+    return new UDPServer(teams);
   }
 
   // Add a new client to our list of clients
@@ -53,29 +52,29 @@ export class UDPServer {
   }
 
   // Set up callbacks for a given team and then bind the team to its multicast address and port
-  private initTeam = (team: TeamData) => {
-    team.server.on('listening', () => {
-      team.server.addMembership(team.address);
-      const address = team.server.address();
+  private initialiseListener = (listener: Listener) => {
+    listener.server.on('listening', () => {
+      listener.server.addMembership(listener.team.address);
+      const address = listener.server.address();
       console.log(
-        `${team.name} UDP Server: Listening on ${address.address}:${address.port}`,
+        `${listener.team.name} UDP Server: Listening on ${address.address}:${address.port}`,
       );
     });
-    team.server.on('error', (error: Error) => {
-      console.log(`${team.name} UDP Server: Error:\n${error.stack}`);
-      team.server.close();
+    listener.server.on('error', (error: Error) => {
+      console.log(`${listener.team.name} UDP Server: Error:\n${error.stack}`);
+      listener.server.close();
     });
-    team.server.on('message', (packet: Buffer, rinfo: dgram.RemoteInfo) => {
+    listener.server.on('message', (packet: Buffer, rinfo: dgram.RemoteInfo) => {
       console.log(
-        `${team.name} UDP Server: Received a message from ${rinfo.family}:${rinfo.address}:${rinfo.port}`,
+        `${listener.team.name} UDP Server: Received a message from ${rinfo.family}:${rinfo.address}:${rinfo.port}`,
       );
-      for (let emit_cb of this.clients.values()) {
+      this.clients.forEach((emit_cb: ClientListener) => {
         emit_cb('udp_packet', {
           payload: packet,
           team: {
-            name: team.name,
-            address: team.address,
-            port: team.port,
+            name: listener.team.name,
+            address: listener.team.address,
+            port: listener.team.port,
           },
           rinfo: {
             family: rinfo.family,
@@ -83,11 +82,11 @@ export class UDPServer {
             port: rinfo.port,
           },
         });
-      }
+      });
     });
-    team.server.on('close', () => {
+    listener.server.on('close', () => {
       console.log('${team.name} UDP Server: Closed');
     });
-    team.server.bind({ port: 9917, address: team.address });
+    listener.server.bind({ port: 9917, address: listener.team.address });
   };
 }
