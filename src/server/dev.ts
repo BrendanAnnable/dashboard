@@ -26,8 +26,12 @@ if (teams.length === 0) {
 // Convert command line data into a more usable format
 var teamData = new Array<TeamData>();
 teams.forEach((team: string) => {
-  const data = team.split(':');
-  teamData.push({ name: data[0], address: data[1], port: Number(data[2]) });
+  const nameSplit = team.indexOf(':');
+  const portSplit = team.lastIndexOf(':');
+  const teamName = team.substring(0, nameSplit);
+  const teamAddress = team.substring(nameSplit + 1, portSplit);
+  const teamPort = Number(team.substring(portSplit + 1));
+  teamData.push({ name: teamName, address: teamAddress, port: teamPort });
 });
 
 const compiler = webpack(webpackConfig);
