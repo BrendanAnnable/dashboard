@@ -49,9 +49,9 @@ sioNetwork.on('connection', (socket: sio.Socket) => {
       socket.emit(event, ...args);
     },
   );
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   socket.on('disconnect', (reason: string) => {
     console.log('Disconnected from a client');
+    console.log(`Reason: ${reason}`);
     off_cb();
   });
 
