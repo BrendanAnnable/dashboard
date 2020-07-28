@@ -6,21 +6,53 @@ import minimist from 'minimist';
 import favicon from 'serve-favicon';
 import sio from 'socket.io';
 
-import { WebSocketProxyUDPServer } from './network/network';
-import { WebSocketServer } from './network/web_socket_server';
+import { UDPServers } from './network/network';
 
+// Process command line arguments
 const args = minimist(process.argv.slice(2));
-const teamAAddress = args.team_a || '239.226.152.162';
-const teamBAddress = args.team_b || '239.226.152.163';
+
+// Get all of the teams from the command line
+// Fall back to our defaults if none were specified
+let teams = args._;
+if (teams.length === 0) {
+  teams = ['Red Team:239.226.152.162:9917', 'Blue Team:239.226.152.163:9917'];
+}
+
+// Convert command line data into a more usable format
+const teamData = teams.map((team: string) => {
+  const nameSplit = team.indexOf(':');
+  const portSplit = team.lastIndexOf(':');
+  const teamName = team.substring(0, nameSplit);
+  const teamAddress = team.substring(nameSplit + 1, portSplit);
+  const teamPort = Number(team.substring(portSplit + 1));
+  return { name: teamName, address: teamAddress, port: teamPort };
+});
 
 const app = express();
 const server = http.createServer(app);
-const sioNetwork = sio(server);
+const sioNetwork = sio(server, {
+  allowUpgrades: false,
+  transports: ['websocket'],
+});
 
-// Initialize socket.io namespace immediately to catch reconnections.
-WebSocketProxyUDPServer.of(WebSocketServer.of(sioNetwork.of('/dashboard')), {
-  teamAAddress,
-  teamBAddress,
+// Start listening to the multicast/broadcast addresses
+const udpServer = UDPServers.of(teamData);
+
+// Whenever we get a new client connection let the UDP server know about it
+sioNetwork.on('connection', (socket: sio.Socket) => {
+  const off_cb = udpServer.on(
+    socket.client.id,
+    (event: string, ...args: any[]) => {
+      socket.emit(event, ...args);
+    },
+  );
+  socket.on('disconnect', (reason: string) => {
+    console.log('Disconnected from a client');
+    console.log(`Reason: ${reason}`);
+    off_cb();
+  });
+
+  console.log('Connected to a new client');
 });
 
 const root = `${__dirname}/../../dist`;
