@@ -1,5 +1,5 @@
-import dgram = require('dgram');
-import dns = require('dns');
+import dgram from 'dgram';
+import dns from 'dns';
 import ip6addr from 'ip6addr';
 
 export type ClientListener = (event: string, ...args: any[]) => void;

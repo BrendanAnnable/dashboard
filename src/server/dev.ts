@@ -40,7 +40,7 @@ const sioNetwork = sio(server, {
   transports: ['websocket'],
 });
 
-// Start listening to the multicast groups
+// Start listening to the multicast/broadcast addresses
 const udpServer = UDPServers.of(teamData);
 
 // Whenever we get a new client connection let the UDP server know about it
