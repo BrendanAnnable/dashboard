@@ -33,28 +33,33 @@ export class UDPServers {
           error: NodeJS.ErrnoException | null,
           addresses: dns.LookupAddress[],
         ) => {
-          // Filter returned addresses into either IPv4 or IPv6
-          const ipv4 = addresses.filter(v => v.family === 4);
-          const ipv6 = addresses.filter(v => v.family === 6);
-
-          // Prefer IPv4 addresses
-          if (ipv4.length > 0 || ipv6.length > 0) {
-            this.servers.push(
-              UDPServer.of(
-                {
-                  name: team.name,
-                  address: ipv4.length > 0 ? ipv4[0].address : ipv6[0].address,
-                  port: team.port,
-                },
-                (team: TeamData, payload: Buffer, rinfo: dgram.RemoteInfo) => {
-                  this.onMessage(team, payload, rinfo);
-                },
-              ),
-            );
+          if (error) {
+            throw `UDPServer encountered an error resolving a DNS address: Error: ${error?.code}\n${error?.stack}`;
           } else {
-            console.log(
-              `UDPServer encountered an error resolving a DNS address: Error: ${error?.code}\n${error?.stack}`,
-            );
+            // Filter returned addresses into either IPv4 or IPv6
+            const ipv4 = addresses.filter(v => v.family === 4);
+            const ipv6 = addresses.filter(v => v.family === 6);
+
+            // Prefer IPv4 addresses
+            if (ipv4.length > 0 || ipv6.length > 0) {
+              this.servers.push(
+                UDPServer.of(
+                  {
+                    name: team.name,
+                    address:
+                      ipv4.length > 0 ? ipv4[0].address : ipv6[0].address,
+                    port: team.port,
+                  },
+                  (
+                    team: TeamData,
+                    payload: Buffer,
+                    rinfo: dgram.RemoteInfo,
+                  ) => {
+                    this.onMessage(team, payload, rinfo);
+                  },
+                ),
+              );
+            }
           }
         },
       );
