@@ -18,7 +18,7 @@ export function loadTeamData(
   // If there are no command line arguments, or not a multiple of 3 command line arguments, throw an error
   fs.readFile(
     'config.yaml',
-    { encoding: 'utf8', flag: 'r' },
+    'utf8',
     (error: NodeJS.ErrnoException | null, data: string) => {
       if (error) {
         console.log(
@@ -31,8 +31,8 @@ export function loadTeamData(
         }
 
         // Convert command line data into a more usable format
-        // Command line data is expected to be a space-separated list of team data
-        // <team name> <multicast address> <port> <team name> <multicast address> <port>
+        // Command line data is expected to be a space-separated list of space-separated tuples of the form
+        // <team name> <multicast/broadcast address> <port>
         const teamData: TeamData[] = [];
         for (let i = 0; i <= args.length - 3; i += 3) {
           teamData.push({

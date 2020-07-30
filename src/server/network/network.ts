@@ -16,12 +16,12 @@ export type TeamData = {
 };
 
 export class UDPServers {
-  private servers: Array<UDPServer>;
+  private servers: UDPServer[];
   private clients: Map<string, ClientListener>;
 
-  constructor(teams: Array<TeamData>) {
+  constructor(teams: TeamData[]) {
     this.clients = new Map<string, ClientListener>();
-    this.servers = new Array<UDPServer>();
+    this.servers = [];
 
     teams.forEach((team: TeamData) => {
       // Determine if we are listening on a IPv4 or IPv6 address and resolve any DNS address
@@ -34,7 +34,7 @@ export class UDPServers {
           addresses: dns.LookupAddress[],
         ) => {
           if (error) {
-            throw `UDPServer encountered an error resolving a DNS address: Error: ${error?.code}\n${error?.stack}`;
+            throw `UDPServer encountered an error resolving a DNS address: Error: ${error.code}\n${error.stack}`;
           } else {
             // Filter returned addresses into either IPv4 or IPv6
             const ipv4 = addresses.filter(v => v.family === 4);
@@ -66,19 +66,19 @@ export class UDPServers {
     });
   }
 
-  static of(teams: Array<TeamData>) {
+  static of(teams: TeamData[]) {
     return new UDPServers(teams);
   }
 
   // Add a new client to our list of clients
-  on(client: string, emit_cb: ClientListener) {
+  on(client: string, emitCB: ClientListener) {
     // If the client is already in our list, remove it
     if (this.clients.has(client)) {
       this.clients.delete(client);
     }
 
     // Add the client
-    this.clients.set(client, emit_cb);
+    this.clients.set(client, emitCB);
 
     // Return the off callback
     return () => this.clients.delete(client);
@@ -86,8 +86,8 @@ export class UDPServers {
 
   // One of the UDP servers received a new message, send it on to all clients
   private onMessage(team: TeamData, packet: Buffer, rinfo: dgram.RemoteInfo) {
-    for (let emit_cb of this.clients.values()) {
-      emit_cb('udp_packet', {
+    for (let emitCB of this.clients.values()) {
+      emitCB('udp_packet', {
         payload: packet,
         team: {
           name: team.name,
@@ -107,7 +107,7 @@ export class UDPServers {
 class UDPServer {
   private socket: dgram.Socket;
 
-  constructor(private team: TeamData, private msg_cb: MessageCallback) {
+  constructor(private team: TeamData, private msgCB: MessageCallback) {
     this.socket = dgram.createSocket({
       type: ip6addr.parse(team.address).kind() === 'ipv6' ? 'udp6' : 'udp4',
       reuseAddr: true,
@@ -136,7 +136,7 @@ class UDPServer {
       console.log(
         `${team.name} UDP Server: Received a message from ${rinfo.family}:${rinfo.address}:${rinfo.port}`,
       );
-      this.msg_cb(this.team, packet, rinfo);
+      this.msgCB(this.team, packet, rinfo);
     });
 
     this.socket.on('close', () => {
