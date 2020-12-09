@@ -1,0 +1,8 @@
+teams:
+  - name: Red Team
+    address: 239.226.152.162
+    port: 9917
+  - name: Blue Team
+    address: 239.226.152.162
+    port: 9917
+
