@@ -5,8 +5,8 @@
 .awcache
 /build
 /dist
-/src/shared/messages.js
-/src/shared/messages.d.ts
+/src/shared/proto/messages.js
+/src/shared/proto/messages.d.ts
 
 # IntelliJ IDEA
 /.idea/workspace.xml

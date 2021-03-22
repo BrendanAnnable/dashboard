@@ -5,7 +5,7 @@ const pbts = require('protobufjs/cli/pbts');
 const rootDir = path.resolve(__dirname, '..');
 
 const messagesSourceDir = path.join(rootDir, 'src/shared/proto');
-const messagesOutputDir = path.join(rootDir, 'src/shared');
+const messagesOutputDir = path.join(rootDir, 'src/shared/proto');
 
 const messagesFileJs = path.join(messagesOutputDir, 'messages.js');
 const messagesFileTs = path.join(messagesOutputDir, 'messages.d.ts');
