@@ -136,6 +136,7 @@ class UDPServer {
       console.log(
         `${team.name} UDP Server: Received a message from ${rinfo.family}:${rinfo.address}:${rinfo.port}`,
       );
+      console.log({ packet, parsed: JSON.parse(packet.toString()) });
       this.msgCB(this.team, packet, rinfo);
     });
 
